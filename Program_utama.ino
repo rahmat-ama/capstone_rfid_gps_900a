@@ -21,6 +21,11 @@ char pass[] = "";
 #define SIM900_RX_PIN 27
 #define SIM900_TX_PIN 26
 #define LED_PIN 2
+#define RELAY_PIN 13
+
+// Deepsleep
+#define WAKEUP_PIN 35
+#define WAKEUP_LEVEL 1
 
 HardwareSerial sim900(1);
 TinyGsm modem(sim900);
@@ -38,7 +43,23 @@ bool gpsAvailable = false;
 TaskHandle_t TaskBlynkHandle = NULL;
 TaskHandle_t TaskTelegramHandle = NULL;
 
-// Fungsi bantu
+void goToDeepSleep() {
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, WAKEUP_LEVEL);
+  Serial.println("Masuk ke deep sleep...");
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
+void print_wakeup_reason() {
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  Serial.print("Penyebab Wakeup: ");
+  switch (wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Sinyal eksternal dari GPIO35 HIGH"); break;
+    default: Serial.printf("Bukan dari deep sleep: %d\n", wakeup_reason); break;
+  }
+}
+
+// Fungsi bantu membaca data GPS
 void readGPSData() {
   while (Serial2.available() > 0) {
     if (gps.encode(Serial2.read())) {
@@ -65,8 +86,10 @@ BLYNK_WRITE(V1) {
 void checkPinV1State() {
   if (pinV1State) {
     digitalWrite(LED_PIN, HIGH);
+    digitalWrite(RELAY_PIN, LOW);
   } else {
     digitalWrite(LED_PIN, LOW);
+    digitalWrite(RELAY_PIN, HIGH);
   }
 }
 
@@ -100,6 +123,7 @@ void TaskTelegram(void* parameter) {
 
       String url = "AT+HTTPPARA=\"URL\",\"http://api.callmebot.com/text.php?user=@rahmatamalul&text=Location+:+https%3A%2F%2Fwww.google.com%2Fmaps%2Fsearch%2F%3Fapi%3D1%26query%3D" 
                    + String(currentLat, 6) + "%2C" + String(currentLng, 6) + "\"";
+                   
       sendCommand(url);
       sendCommand("AT+HTTPACTION=0");
       sendCommand("AT+HTTPREAD");
@@ -113,41 +137,65 @@ void TaskTelegram(void* parameter) {
 // ------------------ SETUP ------------------
 void setup() {
   Serial.begin(115200);
+
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Serial komunikasi
-  sim900.begin(9600, SERIAL_8N1, SIM900_RX_PIN, SIM900_TX_PIN);
-  Serial2.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, HIGH);
 
-  // Inisialisasi modem
-  if (!modem.restart()) {
-    Serial.println("Modem gagal restart!");
-    while (true);
+  pinMode(WAKEUP_PIN, INPUT);
+  print_wakeup_reason();
+
+  // Jika pin masih LOW saat boot (tidak ditekan), tidur lagi
+  if (digitalRead(WAKEUP_PIN) == LOW) {
+    Serial.println("GPIO35 LOW - tidak ada trigger, masuk deep sleep.");
+    goToDeepSleep();
   }
 
-  if (!modem.waitForNetwork()) {
-    Serial.println("Tidak ada jaringan!");
-    while (true);
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+    Serial.println("Bangun oleh GPIO35 HIGH. Memulai program utama");
+    // Serial komunikasi
+    sim900.begin(9600, SERIAL_8N1, SIM900_RX_PIN, SIM900_TX_PIN);
+    Serial2.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+
+    // Inisialisasi modem
+    if (!modem.restart()) {
+      Serial.println("Modem gagal restart!");
+      while (true);
+    }
+
+    if (!modem.waitForNetwork()) {
+      Serial.println("Tidak ada jaringan!");
+      while (true);
+    }
+
+    if (!modem.gprsConnect(apn, user, pass)) {
+      Serial.println("Gagal GPRS!");
+      while (true);
+    }
+
+    // Inisialisasi Blynk
+    Blynk.begin(BLYNK_AUTH_TOKEN, modem, apn, user, pass);
+    timer.setInterval(2000L, checkPinV1State);
+    timer.setInterval(5000L, myTimerEvent);
+
+    // Task GPS di loop utama
+    xTaskCreatePinnedToCore(TaskTelegram, "TelegramTask", 4096, NULL, 1, &TaskTelegramHandle, 1);
+    xTaskCreatePinnedToCore(TaskBlynk, "BlynkTask", 4096, NULL, 1, &TaskBlynkHandle, 1);
+  } 
+  else {
+    Serial.println("Boot awal atau bukan wakeup EXT0. Tidur kembali.");
+    goToDeepSleep();
   }
 
-  if (!modem.gprsConnect(apn, user, pass)) {
-    Serial.println("Gagal GPRS!");
-    while (true);
-  }
-
-  xTaskCreatePinnedToCore(TaskTelegram, "TelegramTask", 4096, NULL, 1, &TaskTelegramHandle, 1);
-
-  // Inisialisasi Blynk
-  Blynk.begin(BLYNK_AUTH_TOKEN, modem, apn, user, pass);
-  timer.setInterval(2000L, checkPinV1State);
-  timer.setInterval(5000L, myTimerEvent);
-
-  // Task GPS di loop utama
-  xTaskCreatePinnedToCore(TaskBlynk, "BlynkTask", 4096, NULL, 1, &TaskBlynkHandle, 1);
 }
 
 void loop() {
+  if (digitalRead(WAKEUP_PIN) == LOW) {
+    Serial.println("GPIO13 kembali LOW - masuk deep sleep.");
+    goToDeepSleep();
+  }
   readGPSData();  // baca GPS di loop utama (low priority)
   vTaskDelay(pdMS_TO_TICKS(500));
 }
