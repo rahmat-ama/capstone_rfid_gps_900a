@@ -1,0 +1,294 @@
+@startuml
+' Skin parameters for better appearance
+skinparam actorStyle awesome
+skinparam sequenceParticipant भरघोस  /' Use a color that provides good contrast '/
+skinparam sequenceArrowColor DimGray
+skinparam sequenceLifeLineBorderColor Gray
+skinparam sequenceGroupBorderColor DimGray
+skinparam sequenceGroupBackgroundColor PaleTurquoise
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+
+title Aktivasi Kendaraan dengan RFID (Sukses)
+
+actor Pengguna
+participant "RFID Reader" as RFID
+participant "ESP32" as MCU
+participant "Relay" as RLY
+participant "Modul GPS NEO" as GPS
+participant "Server Blynk" as BLYNK
+participant "Server Telegram\n(CallMeBot)" as TELEGRAM
+
+Pengguna -> RFID : Mendekatkan Tag RFID
+activate RFID
+RFID -> MCU : Data Tag RFID
+deactivate RFID
+activate MCU
+
+MCU -> MCU : Validasi Tag (Sukses)
+MCU -> RLY : Aktifkan Relay
+activate RLY
+RLY -> RLY : Arus Mengalir ke Sistem Motor
+deactivate RLY
+
+MCU -> GPS : Minta Data Lokasi
+activate GPS
+GPS -> MCU : Kirim Data Latitude & Longitude
+deactivate GPS
+
+MCU -> BLYNK : Update Status: Motor Aktif, Kondisi Aman
+activate BLYNK
+BLYNK --> MCU : Konfirmasi
+deactivate BLYNK
+
+MCU -> BLYNK : Update Data Lokasi (Lat, Lon)
+activate BLYNK
+BLYNK --> MCU : Konfirmasi
+deactivate BLYNK
+
+MCU -> TELEGRAM : Kirim Notifikasi: Motor Aktif + Link Gmaps (HTTP)
+activate TELEGRAM
+TELEGRAM --> MCU : Konfirmasi Pengiriman
+deactivate TELEGRAM
+deactivate MCU
+
+@enduml
+
+@startuml
+' Skin parameters (can be reused or redefined if needed)
+skinparam actorStyle awesome
+skinparam sequenceParticipant भरघोस
+skinparam sequenceArrowColor DimGray
+skinparam sequenceLifeLineBorderColor Gray
+skinparam sequenceGroupBorderColor DimGray
+skinparam sequenceGroupBackgroundColor PaleTurquoise
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+
+title Aktivasi Kendaraan Gagal (Deteksi Pencurian)
+
+actor "Pengguna/Pencuri" as UserThreat
+participant "RFID Reader" as RFID
+participant "ESP32" as MCU
+participant "Modul GPS NEO" as GPS
+participant "Server Blynk" as BLYNK
+participant "Server Telegram\n(CallMeBot)" as TELEGRAM
+
+UserThreat -> RFID : Upaya Pembacaan RFID (Gagal/Timeout)
+activate RFID
+RFID -> MCU : Data Tag Tidak Valid / Timeout
+deactivate RFID
+activate MCU
+
+loop Deteksi Gagal Selama 3 Menit
+    MCU -> MCU : Validasi Tag (Gagal)
+    MCU -> MCU : Cek Timer / Jumlah Percobaan
+end
+
+MCU -> MCU : Status Berubah: BERBAHAYA (Pencurian Terdeteksi)
+
+MCU -> GPS : Minta Data Lokasi
+activate GPS
+GPS -> MCU : Kirim Data Latitude & Longitude
+deactivate GPS
+
+MCU -> TELEGRAM : Kirim Notifikasi: BERBAHAYA! + Link Gmaps (HTTP)
+activate TELEGRAM
+TELEGRAM --> MCU : Konfirmasi Pengiriman
+deactivate TELEGRAM
+
+MCU -> BLYNK : Update Status: BERBAHAYA
+activate BLYNK
+BLYNK --> MCU : Konfirmasi
+deactivate BLYNK
+
+MCU -> BLYNK : Update Data Lokasi (Lat, Lon)
+activate BLYNK
+BLYNK --> MCU : Konfirmasi
+deactivate BLYNK
+
+note right of MCU : Sistem masuk mode pemantauan intensif (setiap 2 menit)
+deactivate MCU
+
+@enduml
+
+@startuml
+' Skin parameters
+skinparam actorStyle awesome
+skinparam sequenceParticipant भरघोस
+skinparam sequenceArrowColor DimGray
+skinparam sequenceLifeLineBorderColor Gray
+skinparam sequenceGroupBorderColor DimGray
+skinparam sequenceGroupBackgroundColor PaleTurquoise
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+
+title Pemantauan Kendaraan (Kondisi Aman)
+
+participant "ESP32" as MCU
+participant "Modul GPS NEO" as GPS
+participant "Server Blynk" as BLYNK
+participant "Server Telegram\n(CallMeBot)" as TELEGRAM
+
+activate MCU
+loop Setiap 10 Menit
+    MCU -> GPS : Minta Data Lokasi
+    activate GPS
+    GPS -> MCU : Kirim Data Latitude & Longitude
+    deactivate GPS
+
+    MCU -> BLYNK : Update Data Lokasi (Lat, Lon)
+    activate BLYNK
+    BLYNK --> MCU : Konfirmasi
+    deactivate BLYNK
+
+    MCU -> TELEGRAM : Kirim Notifikasi Lokasi Rutin + Link Gmaps (HTTP)
+    activate TELEGRAM
+    TELEGRAM --> MCU : Konfirmasi Pengiriman
+    deactivate TELEGRAM
+end
+deactivate MCU
+
+@enduml
+
+@startuml
+' Skin parameters
+skinparam actorStyle awesome
+skinparam sequenceParticipant भरघोस
+skinparam sequenceArrowColor DimGray
+skinparam sequenceLifeLineBorderColor Gray
+skinparam sequenceGroupBorderColor DimGray
+skinparam sequenceGroupBackgroundColor PaleTurquoise
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+
+title Pemantauan Kendaraan (Kondisi Berbahaya - Intensif)
+
+participant "ESP32" as MCU
+participant "Modul GPS NEO" as GPS
+participant "Server Blynk" as BLYNK
+participant "Server Telegram\n(CallMeBot)" as TELEGRAM
+
+activate MCU
+note left of MCU : Dipicu setelah kondisi berbahaya terdeteksi
+loop Setiap 2 Menit
+    MCU -> GPS : Minta Data Lokasi
+    activate GPS
+    GPS -> MCU : Kirim Data Latitude & Longitude
+    deactivate GPS
+
+    MCU -> BLYNK : Update Data Lokasi (Lat, Lon)
+    activate BLYNK
+    BLYNK --> MCU : Konfirmasi
+    deactivate BLYNK
+
+    MCU -> TELEGRAM : Kirim Notifikasi Lokasi BERBAHAYA! + Link Gmaps (HTTP)
+    activate TELEGRAM
+    TELEGRAM --> MCU : Konfirmasi Pengiriman
+    deactivate TELEGRAM
+end
+deactivate MCU
+
+@enduml
+
+@startuml
+' Skin parameters
+skinparam actorStyle awesome
+skinparam sequenceParticipant भरघोस
+skinparam sequenceArrowColor DimGray
+skinparam sequenceLifeLineBorderColor Gray
+skinparam sequenceGroupBorderColor DimGray
+skinparam sequenceGroupBackgroundColor PaleTurquoise
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+
+title Kontrol Relay Jarak Jauh via Blynk (Mematikan Motor)
+
+actor Pengguna
+participant "Aplikasi Blynk" as APP_BLYNK
+participant "Server Blynk" as BLYNK
+participant "ESP32" as MCU
+participant "Relay" as RLY
+
+Pengguna -> APP_BLYNK : Tekan Tombol "Matikan Relay"
+activate APP_BLYNK
+APP_BLYNK -> BLYNK : Perintah: Matikan Relay
+deactivate APP_BLYNK
+activate BLYNK
+
+BLYNK -> MCU : Perintah: Matikan Relay
+deactivate BLYNK
+activate MCU
+
+MCU -> MCU : Proses Perintah (delay ~3 detik)
+MCU -> RLY : Nonaktifkan Relay
+activate RLY
+RLY -> RLY : Arus Terputus dari Sistem Motor
+deactivate RLY
+
+MCU -> BLYNK : Update Status: Relay OFF, Motor Mati
+activate BLYNK
+BLYNK --> MCU : Konfirmasi
+deactivate BLYNK
+deactivate MCU
+
+@enduml
+
+@startuml
+' Skin parameters
+skinparam actorStyle awesome
+skinparam sequenceParticipant भरघोस
+skinparam sequenceArrowColor DimGray
+skinparam sequenceLifeLineBorderColor Gray
+skinparam sequenceGroupBorderColor DimGray
+skinparam sequenceGroupBackgroundColor PaleTurquoise
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+
+title Kontrol Relay Jarak Jauh via Blynk (Menghidupkan Motor)
+
+actor Pengguna
+participant "Aplikasi Blynk" as APP_BLYNK
+participant "Server Blynk" as BLYNK
+participant "ESP32" as MCU
+participant "Relay" as RLY
+
+Pengguna -> APP_BLYNK : Tekan Tombol "Hidupkan Relay"
+activate APP_BLYNK
+APP_BLYNK -> BLYNK : Perintah: Hidupkan Relay
+deactivate APP_BLYNK
+activate BLYNK
+
+BLYNK -> MCU : Perintah: Hidupkan Relay
+deactivate BLYNK
+activate MCU
+
+opt Otorisasi Tambahan (jika diperlukan)
+    MCU -> MCU : Validasi Kondisi untuk Menghidupkan
+end
+
+MCU -> MCU : Proses Perintah (delay ~3 detik)
+MCU -> RLY : Aktifkan Relay
+activate RLY
+RLY -> RLY : Arus Mengalir ke Sistem Motor
+deactivate RLY
+
+MCU -> BLYNK : Update Status: Relay ON
+activate BLYNK
+BLYNK --> MCU : Konfirmasi
+deactivate BLYNK
+deactivate MCU
+
+@enduml
