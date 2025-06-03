@@ -1,0 +1,74 @@
+@startuml
+' Set skin parameters for better appearance
+skinparam actorStyle awesome
+skinparam usecase {
+    BackgroundColor PaleGreen
+    BorderColor Green
+    ArrowColor Green
+    ActorBorderColor black
+    ActorFontColor black
+    ActorBackgroundColor LightGrey
+}
+skinparam note {
+    BackgroundColor LightYellow
+    BorderColor Orange
+}
+skinparam rectangle {
+    BorderColor DimGray
+}
+
+left to right direction
+
+actor Pengguna as User
+actor "Pencuri (Implisit)" as Thief
+
+rectangle "Sistem Pelacak GPS IoT Motor" {
+    usecase "UC1: Mengaktifkan Kendaraan\ndengan RFID" as UC1
+    usecase "UC2: Memantau Kendaraan\n(Kondisi Aman)" as UC2
+    usecase "UC3: Menangani Kondisi Berbahaya\n(Upaya Pencurian)" as UC3
+    usecase "UC4: Mengontrol Relay Jarak Jauh\nvia Blynk" as UC4
+
+    usecase "UC2.1: Kirim Data Lokasi\nke Blynk" as UC2_1
+    usecase "UC2.2: Kirim Notifikasi Lokasi\nke Telegram (HTTP)" as UC2_2
+    usecase "UC3.1: Kirim Data Lokasi\nke Blynk (Intensif)" as UC3_1
+    usecase "UC3.2: Kirim Notifikasi Lokasi\nke Telegram (Intensif, HTTP)" as UC3_2
+}
+
+' Relasi Aktor dengan Use Case Utama
+User -- UC1
+User -- UC2
+User -- UC3 : Menerima Notifikasi
+User -- UC4
+
+' Pencuri (implisit) memicu kondisi berbahaya
+Thief -- UC3 : Memicu (gagal RFID)
+
+' Relasi Inklusi (Include)
+UC2 ..> UC2_1 : <<include>>
+UC2 ..> UC2_2 : <<include>>
+
+UC3 ..> UC3_1 : <<include>>
+UC3 ..> UC3_2 : <<include>>
+
+' Catatan Tambahan
+note right of UC1
+  Jika RFID valid, relay aktif.
+  Jika gagal 3 menit, masuk kondisi berbahaya (UC3).
+end note
+
+note right of UC2
+  Update lokasi setiap 10 menit
+  (Blynk & Telegram).
+end note
+
+note right of UC3
+  Notifikasi awal segera.
+  Update lokasi setiap 2 menit
+  (Blynk & Telegram).
+end note
+
+note right of UC4
+  Reaksi tombol +/- 3 detik.
+end note
+
+@enduml
